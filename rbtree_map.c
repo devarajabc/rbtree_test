@@ -40,15 +40,8 @@
  #include "map.h"
  
  /* TODO: Avoid relying on key_size and data_size */
- struct map_internal {
-     map_node_t *root;
- 
-     /* properties */
-     size_t key_size, data_size;
- 
-     map_cmp_t (*comparator)(const void *, const void *);
- };
- 
+/*struct map_internal {
+    
  /* Each node in the red-black tree consumes at least 1 byte of space (for the
   * linkage if nothing else), so there are a maximum of sizeof(void *) << 3
   * red-black tree nodes in any process (and thus, at most sizeof(void *) << 3
@@ -58,60 +51,61 @@
   */
  #define RB_MAX_DEPTH (sizeof(void *) << 4)
  
- typedef enum { RB_BLACK = 0, RB_RED } map_color_t;
+ typedef enum { RB_BLACK = 0, RB_RED } color_t;
  
  /* Left accessors */
- static inline map_node_t *rb_node_get_left(const map_node_t *node)
+ static inline rbnode *rb_node_get_left(const rbnode *node)
  {
      return node->left;
  }
  
- static inline void rb_node_set_left(map_node_t *node, map_node_t *left)
+ static inline void rb_node_set_left(rbnode *node, rbnode *left)
  {
      node->left = left;
  }
  
  /* Right accessors */
- static inline map_node_t *rb_node_get_right(const map_node_t *node)
+ static inline rbnode *rb_node_get_right(const rbnode *node)
  {
-     return (map_node_t *) (((uintptr_t) node->right_red) & ~3);
+     return (rbnode *) (((uintptr_t) node->right_red) & ~3);
  }
  
- static inline void rb_node_set_right(map_node_t *node, map_node_t *right)
+ static inline void rb_node_set_right(rbnode *node, rbnode *right)
  {
-     node->right_red = (map_node_t *) (((uintptr_t) right) |
+     node->right_red = (rbnode *) (((uintptr_t) right) |
                                        (((uintptr_t) node->right_red) & 1));
  }
  
  /* Color accessors */
- static inline map_color_t rb_node_get_color(const map_node_t *node)
+ static inline color_t rb_node_get_color(const rbnode *node)
  {
      return ((uintptr_t) node->right_red) & 1;
  }
  
- static inline void rb_node_set_color(map_node_t *node, map_color_t color)
+ static inline void rb_node_set_color(rbnode *node, color_t color)
  {
      node->right_red =
-         (map_node_t *) (((uintptr_t) node->right_red & ~3) | color);
+         (rbnode *) (((uintptr_t) node->right_red & ~3) | color);
  }
  
- static inline void rb_node_set_red(map_node_t *node)
+ static inline void rb_node_set_red(rbnode *node)
  {
-     node->right_red = (map_node_t *) (((uintptr_t) node->right_red) | 1);
+     node->right_red = (rbnode *) (((uintptr_t) node->right_red) | 1);
  }
  
- static inline void rb_node_set_black(map_node_t *node)
+ static inline void rb_node_set_black(rbnode *node)
  {
-     node->right_red = (map_node_t *) (((uintptr_t) node->right_red) & ~3);
+     node->right_red = (rbnode *) (((uintptr_t) node->right_red) & ~3);
  }
  
  /* Node initializer */
- static inline void rb_node_init(map_node_t *node)
+ static inline void rb_node_init(rbnode *node)
  {
      assert((((uintptr_t) node) & (0x1)) == 0); /* a pointer without marker */
      rb_node_set_left(node, NULL);
      rb_node_set_right(node, NULL);
      rb_node_set_red(node);
+
  }
  
  /* Internal helper macros */
@@ -130,13 +124,13 @@
      } while (0)
  
  typedef struct {
-     map_node_t *node;
+     rbnode *node;
      map_cmp_t cmp;
  } rb_path_entry_t;
  
- static inline map_node_t *rb_search(map_t rb, const map_node_t *node)
+ static inline rbnode *rb_search(rbtree_t* rb, const rbnode *node)
  {
-     map_node_t *ret = rb->root;
+     rbnode *ret = rb->root;
      while (ret) {
          map_cmp_t cmp = (rb->comparator)(node->key, ret->key);
          switch (cmp) {
@@ -156,7 +150,7 @@
      return ret;
  }
  
- static void successor(map_t rb, map_node_t *node)
+ static void successor(rbtree_t* rb, rbnode *node)
  {
      rb_path_entry_t path[RB_MAX_DEPTH];
      rb_path_entry_t *pathp;
@@ -186,7 +180,7 @@
      }
      else{
          for (pathp--; (uintptr_t) pathp >= (uintptr_t) path; pathp--) {
-             map_node_t *cnode = pathp->node;
+             rbnode *cnode = pathp->node;
              if (pathp->cmp == _CMP_LESS) {
  
              }else//y.rigtht
@@ -197,7 +191,7 @@
      }
  }
  
- static void rb_insert(map_t rb, map_node_t *node)
+ static void rb_insert(rbtree_t* rb, rbnode *node)
  {
      rb_path_entry_t path[RB_MAX_DEPTH];
      rb_path_entry_t *pathp;
@@ -228,26 +222,26 @@
  
      /* Go from target node back to root node and fix color accordingly */
      for (pathp--; (uintptr_t) pathp >= (uintptr_t) path; pathp--) {
-         map_node_t *cnode = pathp->node;
+         rbnode *cnode = pathp->node;
          if (pathp->cmp == _CMP_LESS) {
-             map_node_t *left = pathp[1].node;
+             rbnode *left = pathp[1].node;
              rb_node_set_left(cnode, left);
              if (rb_node_get_color(left) == RB_BLACK)
                  return;
-             map_node_t *leftleft = rb_node_get_left(left);
+             rbnode *leftleft = rb_node_get_left(left);
              if (leftleft && (rb_node_get_color(leftleft) == RB_RED)) {
                  /* fix up 4-node */
-                 map_node_t *tnode;
+                 rbnode *tnode;
                  rb_node_set_black(leftleft);
                  rb_node_rotate_right(cnode, tnode);
                  cnode = tnode;
              }
          } else {
-             map_node_t *right = pathp[1].node;
+             rbnode *right = pathp[1].node;
              rb_node_set_right(cnode, right);
              if (rb_node_get_color(right) == RB_BLACK)
                  return;
-             map_node_t *left = rb_node_get_left(cnode);
+             rbnode *left = rb_node_get_left(cnode);
              if (left && (rb_node_get_color(left) == RB_RED)) {
                  /* split 4-node */
                  rb_node_set_black(left);
@@ -255,8 +249,8 @@
                  rb_node_set_red(cnode);
              } else {
                  /* lean left */
-                 map_node_t *tnode;
-                 map_color_t tcolor = rb_node_get_color(cnode);
+                 rbnode *tnode;
+                 color_t tcolor = rb_node_get_color(cnode);
                  rb_node_rotate_left(cnode, tnode);
                  rb_node_set_color(tnode, tcolor);
                  rb_node_set_red(cnode);
@@ -271,7 +265,7 @@
      rb_node_set_black(rb->root);
  }
  
- static void rb_remove(map_t rb, map_node_t *node)
+ static void rb_remove(rbtree_t* rb, rbnode *node)
  {
      rb_path_entry_t path[RB_MAX_DEPTH];
      rb_path_entry_t *pathp = NULL, *nodep = NULL;
@@ -304,7 +298,7 @@
      pathp--;
      if (pathp->node != node) {
          /* swap node with its successor */
-         map_color_t tcolor = rb_node_get_color(pathp->node);
+         color_t tcolor = rb_node_get_color(pathp->node);
          rb_node_set_color(pathp->node, rb_node_get_color(node));
          rb_node_set_left(pathp->node, rb_node_get_left(node));
  
@@ -330,7 +324,7 @@
                  rb_node_set_right(nodep[-1].node, nodep->node);
          }
      } else {
-         map_node_t *left = rb_node_get_left(node);
+         rbnode *left = rb_node_get_left(node);
          if (left) {
              /* node has no successor, but it has a left child.
               * Splice node out, without losing the left child.
@@ -377,9 +371,9 @@
          if (pathp->cmp == _CMP_LESS) {
              rb_node_set_left(pathp->node, pathp[1].node);
              if (rb_node_get_color(pathp->node) == RB_RED) {
-                 map_node_t *right = rb_node_get_right(pathp->node);
-                 map_node_t *rightleft = rb_node_get_left(right);
-                 map_node_t *tnode;
+                 rbnode *right = rb_node_get_right(pathp->node);
+                 rbnode *rightleft = rb_node_get_left(right);
+                 rbnode *tnode;
                  if (rightleft && (rb_node_get_color(rightleft) == RB_RED)) {
                      /* In the following diagrams, ||, //, and \\
                       * indicate the path to the removed node.
@@ -414,8 +408,8 @@
                      rb_node_set_right(pathp[-1].node, tnode);
                  return;
              } else {
-                 map_node_t *right = rb_node_get_right(pathp->node);
-                 map_node_t *rightleft = rb_node_get_left(right);
+                 rbnode *right = rb_node_get_right(pathp->node);
+                 rbnode *rightleft = rb_node_get_left(right);
                  if (rightleft && (rb_node_get_color(rightleft) == RB_RED)) {
                      /*      ||
                       *    pathp(b)
@@ -424,7 +418,7 @@
                       *           /
                       *          (r)
                       */
-                     map_node_t *tnode;
+                     rbnode *tnode;
                      rb_node_set_black(rightleft);
                      rb_node_rotate_right(right, tnode);
                      rb_node_set_right(pathp->node, tnode);
@@ -450,7 +444,7 @@
                       *           /
                       *          (b)
                       */
-                     map_node_t *tnode;
+                     rbnode *tnode;
                      rb_node_set_red(pathp->node);
                      rb_node_rotate_left(pathp->node, tnode);
                      pathp->node = tnode;
@@ -458,11 +452,11 @@
              }
          } else {
              rb_node_set_right(pathp->node, pathp[1].node);
-             map_node_t *left = rb_node_get_left(pathp->node);
+             rbnode *left = rb_node_get_left(pathp->node);
              if (rb_node_get_color(left) == RB_RED) {
-                 map_node_t *tnode;
-                 map_node_t *leftright = rb_node_get_right(left);
-                 map_node_t *leftrightleft = rb_node_get_left(leftright);
+                 rbnode *tnode;
+                 rbnode *leftright = rb_node_get_right(left);
+                 rbnode *leftrightleft = rb_node_get_left(leftright);
                  if (leftrightleft &&
                      (rb_node_get_color(leftrightleft) == RB_RED)) {
                      /*      ||
@@ -474,7 +468,7 @@
                       *   /
                       * (r)
                       */
-                     map_node_t *unode;
+                     rbnode *unode;
                      rb_node_set_black(leftrightleft);
                      rb_node_rotate_right(pathp->node, unode);
                      rb_node_rotate_right(pathp->node, tnode);
@@ -510,7 +504,7 @@
                  }
                  return;
              } else if (rb_node_get_color(pathp->node) == RB_RED) {
-                 map_node_t *leftleft = rb_node_get_left(left);
+                 rbnode *leftleft = rb_node_get_left(left);
                  if (leftleft && (rb_node_get_color(leftleft) == RB_RED)) {
                      /*        ||
                       *      pathp(r)
@@ -519,7 +513,7 @@
                       *   /
                       * (r)
                       */
-                     map_node_t *tnode;
+                     rbnode *tnode;
                      rb_node_set_black(pathp->node);
                      rb_node_set_red(left);
                      rb_node_set_black(leftleft);
@@ -545,7 +539,7 @@
                      return;
                  }
              } else {
-                 map_node_t *leftleft = rb_node_get_left(left);
+                 rbnode *leftleft = rb_node_get_left(left);
                  if (leftleft && (rb_node_get_color(leftleft) == RB_RED)) {
                      /*               ||
                       *             pathp(b)
@@ -554,7 +548,7 @@
                       *          /
                       *        (r)
                       */
-                     map_node_t *tnode;
+                     rbnode *tnode;
                      rb_node_set_black(leftleft);
                      rb_node_rotate_right(pathp->node, tnode);
                      /* Balance restored, but rotation modified subtree root,
@@ -589,7 +583,7 @@
      assert(rb_node_get_color(rb->root) == RB_BLACK);
  }
  
- static void rb_destroy_recurse(map_t rb, map_node_t *node)
+ static void rb_destroy_recurse(rbtree_t* rb, rbnode *node)
  {
      if (!node)
          return;
@@ -603,12 +597,12 @@
      free(node);
  }
  
- static map_node_t *map_create_node(void *key,
+ static rbnode *map_create_node(void *key,
                                     void *value,
                                     size_t ksize,
                                     size_t vsize)
  {
-     map_node_t *node = calloc(1, sizeof(map_node_t));
+     rbnode *node = calloc(1, sizeof(rbnode));
      assert(node);
  
      /* allocate memory for the keys and data */
@@ -634,11 +628,11 @@
  }
  
  /* Constructor */
- map_t map_new(size_t s1,
+ rbtree_t* map_new(size_t s1,
                size_t s2,
                map_cmp_t (*cmp)(const void *, const void *))
  {
-     map_t tree = malloc(sizeof(struct map_internal));
+     rbtree_t* tree = malloc(sizeof(struct map_internal));
      assert(tree);
  
      tree->key_size = s1, tree->data_size = s2;
@@ -648,34 +642,34 @@
  }
  
  /* Add function */
- bool map_insert(map_t obj, void *key, void *val)
+ bool map_insert(rbtree_t* obj, void *key, void *val)
  {
-     map_node_t *node = map_create_node(key, val, obj->key_size, obj->data_size);
+     rbnode *node = map_create_node(key, val, obj->key_size, obj->data_size);
      //
      rb_insert(obj, node);
      return true;
  }
  
  /* Get functions */
- void map_find(map_t obj, map_iter_t *it, void *key)
+ void map_find(rbtree_t* obj, map_iter_t *it, void *key)
  {
-     map_node_t tmp_node = {.key = key};
+     rbnode tmp_node = {.key = key};
      it->node = rb_search(obj, &tmp_node);
  }
  
- bool map_empty(map_t obj)
+ bool map_empty(rbtree_t* obj)
  {
      return !obj->root;
  }
  
  /* Iteration */
- bool map_at_end(map_t UNUSED, map_iter_t *it)
+ bool map_at_end(rbtree_t* UNUSED, map_iter_t *it)
  {
      return !(it->node);
  }
  
  /* Remove functions */
- void map_erase(map_t obj, map_iter_t *it)
+ void map_erase(rbtree_t* obj, map_iter_t *it)
  {
      if (!it->node)
          return;
@@ -687,20 +681,20 @@
  }
  
  /* Empty map */
- void map_clear(map_t obj)
+ void map_clear(rbtree_t* obj)
  {
      rb_destroy_recurse(obj, obj->root);
      obj->root = NULL;
  }
  
  /* Destructor */
- void map_delete(map_t obj)
+ void map_delete(rbtree_t* obj)
  {
      map_clear(obj);
      free(obj);
  }
  
-
+//--------------------------------------------------//
 static void rbtree_print(const rbtree_t* tree);
 
 typedef struct rbnode {
@@ -735,25 +729,22 @@ void rbtree_delete(rbtree_t *tree) {
     rbtreeFree(tree);
 }
 
-#define IS_LEFT  0x1
-#define IS_BLACK 0x2
-
 // Make sure prev is either the rightmost node before start or the leftmost range after start
 static int add_range_next_to(rbtree_t *tree, rbnode *prev, uintptr_t start, uintptr_t end, uint64_t data) {
 // printf("Adding %lx-%lx:%hhx next to %p\n", start, end, data, prev);
     rbnode *node = rbtreeMalloc(sizeof(*node));
     if (!node) return -1;
+    rb_node_init(node);
     node->start = start;
     node->end = end;
     node->data = data;
-    node->left = NULL;
-    node->right = NULL;
-
+    
     if (tree->is_unstable) {
         printf_log(LOG_NONE, "Warning, unstable Red-Black tree; trying to add a node anyways\n");
     }
     tree->is_unstable = true;
 
+    --
     if (!tree->root) {
         node->parent = NULL;
         node->meta = IS_BLACK;
