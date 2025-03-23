@@ -137,6 +137,47 @@ static inline map_node_t *rb_search(map_t rb, const map_node_t *node)
     return ret;
 }
 
+static void successor(map_t rb, map_node_t *node)
+{
+    rb_path_entry_t path[RB_MAX_DEPTH];
+    rb_path_entry_t *pathp;
+
+    /* Traverse through red-black tree node and find the search target node. */
+    path->node = rb->root;
+    for (pathp = path; pathp->node; pathp++) {
+        map_cmp_t cmp = pathp->cmp =
+            (rb->comparator)(node->key, pathp->node->key);
+        switch (cmp) {
+        case _CMP_LESS:
+            pathp[1].node = rb_node_get_left(pathp->node);
+            break;
+        case _CMP_GREATER:
+            pathp[1].node = rb_node_get_right(pathp->node);
+            break;
+        default:
+            /* ignore duplicate key */
+            __UNREACHABLE;
+            break;
+        }
+    }
+    pathp->node = node;
+    if(node->right_red){
+    //Mini_(node->right)
+    //rb_node_get_left(pathp->node);
+    }
+    else{
+        for (pathp--; (uintptr_t) pathp >= (uintptr_t) path; pathp--) {
+            map_node_t *cnode = pathp->node;
+            if (pathp->cmp == _CMP_LESS) {
+
+            }else//y.rigtht
+                continue;
+                
+        }
+
+    }
+}
+
 static void rb_insert(map_t rb, map_node_t *node)
 {
     rb_path_entry_t path[RB_MAX_DEPTH];
@@ -591,6 +632,7 @@ map_t map_new(size_t s1,
 bool map_insert(map_t obj, void *key, void *val)
 {
     map_node_t *node = map_create_node(key, val, obj->key_size, obj->data_size);
+    //
     rb_insert(obj, node);
     return true;
 }

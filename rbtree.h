@@ -22,11 +22,64 @@
  * After transitioning from a sparse array to a red-black tree, the memory usage has decreased slightly for processes that consumed a lot of RAM (for example, Steam uses about 100 MB less memory, and each Wine process uses about 15 MB less).
  */
 
+
+
 #ifndef RBTREE_H
 #define RBTREE_H
 
 #include <stdint.h>
 
+/*
+ * rv32emu is freely redistributable under the MIT License. See the file
+ * "LICENSE" for information on usage and redistribution of this file.
+ */
+
+/* C Implementation for C++ std::map using red-black tree.
+ *
+ * Any data type can be stored in a map, just like std::map.
+ * A map instance requires the specification of two file types:
+ *   1. the key;
+ *   2. what data type the tree node will store;
+ *
+ * It will also require a comparison function to sort the tree.
+ */
+
+ #pragma once
+
+ #include <stdbool.h>
+ #include <stddef.h>
+ 
+ /* Store the key, data, and values of each element in the tree.
+  * This is the main basis of the entire tree aside from the root struct.
+  *
+  * @left: pointer to the left child in the tree
+  * @right_red: combination of a pointer to right child and @color (lowest
+  * bit)
+  *
+  * The red-black tree consists of a root and nodes attached to this root.
+  */
+ 
+ typedef enum { _CMP_LESS = -1, _CMP_EQUAL = 0, _CMP_GREATER = 1 } cmp_t;
+ 
+ 
+ //#define map_iter_value(it, type) (*(type *) (it)->node->data)  ??
+ 
+ /* Integer comparison */
+ static inline cmp_t map_cmp_int(const void *arg0, const void *arg1)
+ {
+     int *a = (int *) arg0;
+     int *b = (int *) arg1;
+     return (*a < *b) ? _CMP_LESS : (*a > *b) ? _CMP_GREATER : _CMP_EQUAL;
+ }
+ 
+ /* Unsigned integer comparison */
+ static inline cmp_t map_cmp_uint(const void *arg0, const void *arg1)
+ {
+     unsigned int *a = (unsigned int *) arg0;
+     unsigned int *b = (unsigned int *) arg1;
+     return (*a < *b) ? _CMP_LESS : (*a > *b) ? _CMP_GREATER : _CMP_EQUAL;
+ }
+ 
 typedef struct rbtree rbtree_t;
 
 /** 

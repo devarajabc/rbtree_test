@@ -3,21 +3,19 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include "rbtree.h"
+
 #ifdef RBTREE_TEST
+#define printf_log(...)
+#define dynarec_log(...)
 #define rbtreeMalloc malloc
 #define rbtreeFree free
 #else
 #include "custommem.h"
 #include "debug.h"
-#include "rbtree.h"
-#if 0
-#define rbtreeMalloc box_malloc
-#define rbtreeFree box_free
-#else
 #define rbtreeMalloc customMalloc
 #define rbtreeFree customFree
-#endif
-#endif
+#endif   
 
 static void rbtree_print(const rbtree_t* tree);
 
@@ -688,7 +686,7 @@ dynarec_log(LOG_DEBUG, "set %s: 0x%lx, 0x%lx, 0x%x\n", tree->name, start, end, d
             // Note that here, succ(prev) = last and node = NULL
             int ret;
             ret = add_range_next_to(tree, prev->right ? last : prev, end, prev->end, prev->data);
-            ret = ret ? ret : add_range_next_to(tree, prev->right ? succ_node(prev) : prev, start, end, data);
+            ret = ret ? ret : add_range_next_to(tree, prev->right ? succ_node(prev) : prev, start, end, data);// Continue to run if the previous add is successww
             prev->end = start;
             return ret;
         }
@@ -954,7 +952,7 @@ rb_set(tree, 0x141000, 0x142000, 135);
     rbtree_print(tree); fflush(stdout);
 rb_set(tree, 0x140000, 0x141000, 135);
     rbtree_print(tree); fflush(stdout);
-rb_set(tree, 0x140000, 0x141000, 7);
+rb_set(tree, 0x140000, 0x147000, 7);
     rbtree_print(tree); fflush(stdout);
 rb_set(tree, 0x140000, 0x141000, 135);
     rbtree_print(tree); fflush(stdout);
