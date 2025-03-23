@@ -758,308 +758,54 @@ static rbnode *find_addr(rbtree_t *tree, uintptr_t addr) {
 }
 
 // node must be a valid node in the tree
-static int remove_node(rbtree_t *tree, rbnode *node) {
+static int remove_node(rbtree_t *tree, rbnode *node) {// succ 0 fail 
 // printf("Removing %p\n", node); rbtree_print(tree); fflush(stdout);
     if (tree->is_unstable) {
         printf_log(LOG_NONE, "Warning, unstable Red-Black tree; trying to add a node anyways\n");
     }
     tree->is_unstable = true;
-
-    if (node->left && node->right) {
-        // Swap node and its successor
-        // Do NOT free the successor as a reference to it can exist
-        rbnode *cur = node->right, *prev;
-        while (cur) {
-            prev = cur;
-            cur = cur->left;
-        }
-        // Swap the position of node and prev != node
-        uint8_t tmp8 = node->meta;
-        node->meta = prev->meta;
-        prev->meta = tmp8;
-        prev->left = node->left;
-        node->left = NULL;
-        if (prev->left) prev->left->parent = prev;
-        if (node->meta & IS_LEFT) {
-            cur = node->parent;
-            node->parent = prev->parent;
-            prev->parent = cur;
-            cur = node->right;
-            node->right = prev->right;
-            prev->right = cur;
-            if (cur) cur->parent = prev;
-        } else {
-            node->right = prev->right;
-            prev->right = node;
-            prev->parent = node->parent;
-            node->parent = prev;
-        }
-        if (node->right) node->right->parent = node; // Should be overriden later
-        if (!prev->parent) {
-            tree->root = prev; // prev is already black
-        } else if (prev->meta & IS_LEFT) {
-            prev->parent->left = prev;
-        } else {
-            prev->parent->right = prev;
-        }
-    }
-    rbnode *child = node->left ? node->left : node->right, *parent = node->parent;
-    if (child) {
-        child->parent = parent;
-        if (!parent) {
-            tree->root = child;
-            child->meta |= IS_BLACK; // Needs to be an or
-            tree->is_unstable = false;
-            return 0;
-        } else if (node->meta & IS_LEFT) {
-            child->meta |= IS_LEFT;
-            parent->left = child;
-        } else {
-            child->meta &= ~IS_LEFT;
-            parent->right = child;
-        }
-    } else {
-        if (!parent) {
-            tree->root = NULL;
-            rbtreeFree(node);
-            tree->is_unstable = false;
-            return 0;
-        } else if (node->meta & IS_LEFT) {
-            parent->left = NULL;
-        } else {
-            parent->right = NULL;
-        }
-    }
-    // Node has been removed, now to fix the tree
-    if (!(node->meta & IS_BLACK)) {
-        rbtreeFree(node);
-        tree->is_unstable = false;
-        return 0;
-    }
-    rbtreeFree(node);
-
-    // Add a black node before child
-    // Notice that the sibling cannot be NULL.
-    while (parent && (!child || (child->meta & IS_BLACK))) {
-        if ((child && child->meta & IS_LEFT) || (!child && !parent->left)) {
-            node = parent->right;
-            if (!(node->meta & IS_BLACK)) {
-                // rotate ===
-                rbnode *y, *z;
-                y = node;
-                z = parent;
-                // ((Bchild), Bz, ((y->left), Ry, (y->right)))
-                // y = RED, rchild of z
-                // z = BLACK, child of z->parent OR ROOT
-                // target = (((Bchild), Rz, (y->left)), By, (y->right))
-                if (z->parent) {
-                    if (z->meta & IS_LEFT) {
-                        z->parent->left = y;
-                    } else {
-                        z->parent->right = y;
-                    }
-                } else {
-                    tree->root = y;
-                }
-                y->meta = z->meta; // black + same side as z
-                z->meta = IS_LEFT; // red + left
-                y->parent = z->parent;
-                z->parent = y;
-                z->right = y->left;
-                y->left = z;
-                if (z->right) {
-                    z->right->meta &= ~IS_LEFT;
-                    z->right->parent = z;
-                }
-                // ===
-                node = parent->right;
-            }
-            if (node->right && !(node->right->meta & IS_BLACK)) {
-                case4_l: {
-                rbnode *y, *z;
-                y = node;
-                z = parent;
-                // ((Bchild), ?z, ((?y->left), By, (Ry->right)))
-                // y = BLACK, rchild of z
-                // z = ?, child of z->parent OR ROOT
-                // target = (((Bchild), Bz, (?y->left)), ?y, (By->right))
-                if (z->parent) {
-                    if (z->meta & IS_LEFT) {
-                        z->parent->left = y;
-                    } else {
-                        z->parent->right = y;
-                    }
-                }
-                y->meta = z->meta; // same color as z + same side as z
-                z->meta = IS_BLACK | IS_LEFT; // black + left
-                y->parent = z->parent;
-                z->parent = y;
-                z->right = y->left;
-                y->left = z;
-                if (z->right) {
-                    z->right->meta &= ~IS_LEFT;
-                    z->right->parent = z;
-                }
-                if (!y->parent) tree->root = y;
-                node->right->meta |= IS_BLACK;
-                tree->is_unstable = false;
-                return 0; }
-            } else if (!node->left || (node->left->meta & IS_BLACK)) {
-                // case2_l:
-                child = parent; // Remember that child can be NULL
-                parent = child->parent;
-                node->meta &= ~IS_BLACK;
-            } else {
-                // case3_l:
-                rbnode *y, *z;
-                y = node->left;
-                z = node;
-                // (((y->left), Ry, (y->right)), Bz, (Bz->right))
-                // y = RED, rchild of z
-                // z = BLACK, child of z->parent
-                // target = ((y->left), By, ((y->right), Rz, (z->right)))
-                if (z->meta & IS_LEFT) {
-                    z->parent->left = y;
-                } else {
-                    z->parent->right = y;
-                }
-                y->meta = z->meta; // black + same side as z
-                z->meta = 0; // red + right
-                y->parent = z->parent;
-                z->parent = y;
-                z->left = y->right;
-                y->right = z;
-                if (z->left) {
-                    z->left->meta |= IS_LEFT;
-                    z->left->parent = z;
-                }
-                node = y;
-                goto case4_l;
-            }
-        } else {
-            node = parent->left;
-            if (!(node->meta & IS_BLACK)) {
-                // rotate ===
-                rbnode *y, *z;
-                y = node;
-                z = parent;
-                // (((y->left), Ry, (y->right)), Bz, (Bchild))
-                // y = RED, lchild of z
-                // z = BLACK, child of z->parent OR ROOT
-                // target = ((y->left), By, ((y->right), Rz, (Bchild)))
-                if (z->parent) {
-                    if (z->meta & IS_LEFT) {
-                        z->parent->left = y;
-                    } else {
-                        z->parent->right = y;
-                    }
-                }
-                y->meta = z->meta; // black + same side as z
-                z->meta = 0; // red + right
-                y->parent = z->parent;
-                z->parent = y;
-                z->left = y->right;
-                y->right = z;
-                if (z->left) {
-                    z->left->meta |= IS_LEFT;
-                    z->left->parent = z;
-                }
-                if (!y->parent) tree->root = y;
-                // ===
-                node = parent->left;
-            }
-            if (node->left && !(node->left->meta & IS_BLACK)) {
-                case4_r: {
-                rbnode *y, *z;
-                y = node;
-                z = y->parent;
-                // (((?y->left), By, (Ry->right)), ?z, (Bchild))
-                // y = BLACK, rchild of z
-                // z = ?, child of z->parent OR ROOT
-                // target = ((?y->left), ?y, ((Ry->right), Bz, (Bchild)))
-                if (z->parent) {
-                    if (z->meta & IS_LEFT) {
-                        z->parent->left = y;
-                    } else {
-                        z->parent->right = y;
-                    }
-                }
-                y->meta = z->meta; // same color as z + same side as z
-                z->meta = IS_BLACK; // black + right
-                y->parent = z->parent;
-                z->parent = y;
-                z->left = y->right;
-                y->right = z;
-                if (z->left) {
-                    z->left->meta |= IS_LEFT;
-                    z->left->parent = z;
-                }
-                if (!y->parent) tree->root = y;
-                node->left->meta |= IS_BLACK;
-                tree->is_unstable = false;
-                return 0; }
-            } else if (!node->right || (node->right->meta & IS_BLACK)) {
-                // case2_r:
-                child = parent;
-                parent = child->parent;
-                node->meta &= ~IS_BLACK;
-            } else {
-                // case3_r:
-                rbnode *y, *z;
-                y = node->right;
-                z = node;
-                // ((Bz->left), Bz, ((y->left), Ry, (y->right)))
-                // y = RED, rchild of z
-                // z = BLACK, child of z->parent
-                // target = (((Bz->left), Rz, (y->left)), By, (y->right))
-                if (z->meta & IS_LEFT) {
-                    z->parent->left = y;
-                } else {
-                    z->parent->right = y;
-                }
-                y->meta = z->meta; // black + same side as z
-                z->meta = IS_LEFT; // red + left
-                y->parent = z->parent;
-                z->parent = y;
-                z->right = y->left;
-                y->left = z;
-                if (z->right) {
-                    z->right->meta &= ~IS_LEFT;
-                    z->right->parent = z;
-                }
-                node = y;
-                goto case4_r;
-            }
-        }
-    }
-    if (child)
-        child->meta |= IS_BLACK;
-    tree->is_unstable = false;
-    return 0;
+    rb_remove(tree, node);// TODO: Check the return value
+    tree->is_unstable = false; 
 }
 
-static rbnode *pred_node(rbnode *node) {
+static rbnode *succ_node(rbtree_t* rb, rbnode *node) {
     if (!node) return NULL;
-    if (node->left) {
-        node = node->left;
-        while (node->right) node = node->right;
+    if (rb_node_get_right(node)) {
+        node = rb_node_get_right(node);
+        while (rb_node_get_left(node)) 
+            node = rb_node_get_left(node);
         return node;
-    } else {
-        while (node->parent && node->meta & IS_LEFT) node = node->parent;
-        return node->parent;
     }
-}
-
-static rbnode *succ_node(rbnode *node) {
-    if (!node) return NULL;
-    if (node->right) {
-        node = node->right;
-        while (node->left) node = node->left;
-        return node;
-    } else {
-        while (node->parent && !(node->meta & IS_LEFT)) node = node->parent;
-        return node->parent;
-    }
+    // right sub-tree didn't exit
+    rb_path_entry_t path[RB_MAX_DEPTH];
+    rb_path_entry_t *pathp; 
+    /* Traverse through red-black tree node and find the search target node. */
+     path->node = rb->root;
+     for (pathp = path; pathp->node; pathp++) {
+        cmp_t cmp = pathp->cmp = comparator(node->start, pathp->node->start);
+        switch (cmp) {
+        case _CMP_LESS:
+            pathp[1].node = rb_node_get_left(pathp->node);
+            break;
+        case _CMP_GREATER:
+            pathp[1].node = rb_node_get_right(pathp->node);
+            break;
+        case _CMP_EQUAL:
+            
+         default:
+             __UNREACHABLE;
+             break;
+         }
+     }
+     pathp->node = node;
+     assert(!rb_node_get_right(node));
+ 
+    /* Go from target node back to root node and fix color accordingly */
+    for (pathp--; (uintptr_t) pathp >= (uintptr_t) path; pathp--) {
+        if (pathp->cmp == _CMP_GREATER) {
+            return pathp[1].node;
+        }
+     }
 }
 
 uint32_t rb_get(rbtree_t *tree, uintptr_t addr) {
