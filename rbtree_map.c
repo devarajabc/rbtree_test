@@ -147,7 +147,7 @@ static inline rbnode *rb_search(rbtree_t *rb, const rbnode *node) {
       ret = rb_node_get_right(ret);
       break;
     default:
-      __UNREACHABLE;
+      // __UNREACHABLE;
       break;
     }
   }
@@ -172,7 +172,7 @@ static void rb_insert(rbtree_t *rb, rbnode *node) {
       break;
     default:
       /* ignore duplicate key */
-      __UNREACHABLE;
+      // __UNREACHABLE;
       break;
     }
   }
@@ -637,10 +637,12 @@ static rbnode *succ_node(rbtree_t *rb, rbnode *node) {
   // right sub-tree didn't exit
   rb_path_entry_t path[RB_MAX_DEPTH];
   rb_path_entry_t *pathp;
-  /* Traverse through red-black tree node and find the search target node. */
+  
+  /* Traverse through red-black tree node and find the lowest ancestor of node
+  */
   path->node = rb->root;
   for (pathp = path; pathp->node; pathp++) {
-    cmp_t cmp = pathp->cmp = comparator(node->start, pathp->node->start);
+    cmp_t cmp = pathp->cmp = comparator(node->start, pathp->node->start);//pathp->node => current node
     switch (cmp) {
     case _CMP_LESS:
       pathp[1].node = rb_node_get_left(pathp->node);
@@ -648,20 +650,19 @@ static rbnode *succ_node(rbtree_t *rb, rbnode *node) {
     case _CMP_GREATER:
       pathp[1].node = rb_node_get_right(pathp->node);
       break;
-    case _CMP_EQUAL:
-
     default:
-      __UNREACHABLE;
+     // __UNREACHABLE;
       break;
     }
   }
+  //pathp->node == NULL
   pathp->node = node;
   assert(!rb_node_get_right(node));
 
   /* Go from target node back to root node and fix color accordingly */
-  for (pathp--; (uintptr_t)pathp >= (uintptr_t)path; pathp--) {
+  for (--pathp; (uintptr_t)pathp >= (uintptr_t)path; pathp--) {
     if (pathp->cmp == _CMP_GREATER) {
-      return pathp[1].node;
+      return pathp->node;
     }
   }
 }
@@ -787,7 +788,7 @@ int rb_set_64(rbtree_t *tree, uintptr_t start, uintptr_t end, uint64_t data) {
     while (last && (last->start < end) && (last->end <= end)) {
       // Remove the entire node
       node = last;
-      last = succ_node(last);
+      last = succ_node(tree, last);
       remove_node(tree, node);
     }
     if (last && (last->start <= end) && (last->data == data)) {
@@ -805,12 +806,8 @@ int rb_set_64(rbtree_t *tree, uintptr_t start, uintptr_t end, uint64_t data) {
       // Split in three
       // Note that here, succ(prev) = last and node = NULL
       int ret;
-      ret = add_range_next_to(tree, rb_node_get_right(prev) ? last : prev, end,
-                              prev->end, prev->data);
-      ret = ret ? ret
-                : add_range_next_to(
-                      tree, rb_node_get_right(prev) ? succ_node(prev) : prev,
-                      start, end, data);
+      ret = add_range(tree, end, prev->end, prev->data);
+      ret = ret ? ret : add_range(tree, start, end, data);
       prev->end = start;
       return ret;
     }
@@ -825,8 +822,7 @@ int rb_set_64(rbtree_t *tree, uintptr_t start, uintptr_t end, uint64_t data) {
         return 0; // Nothing to do!
       // Cut node
       if (node->end > end) {
-        int ret = add_range_next_to(tree, rb_node_get_right(node) ? last : node,
-                                    end, node->end, node->data);
+        int ret = add_range(tree, end, node->end, node->data);
         node->end = end;
         node->data = data;
         return ret;
@@ -838,7 +834,7 @@ int rb_set_64(rbtree_t *tree, uintptr_t start, uintptr_t end, uint64_t data) {
     while (last && (last->start < end) && (last->end <= end)) {
       // Remove the entire node
       prev = last;
-      last = succ_node(last);
+      last = succ_node(tree, last);
       remove_node(tree, prev);
     }
     if (last && (last->start <= end) && (last->data == data)) {
@@ -858,13 +854,13 @@ int rb_set_64(rbtree_t *tree, uintptr_t start, uintptr_t end, uint64_t data) {
   while (last && (last->start < end) && (last->end <= end)) {
     // Remove the entire node
     node = last;
-    last = succ_node(last);
+    last = succ_node(tree, last);
     remove_node(tree, node);
   }
   if (!last) {
     // Add a new node next to prev, the largest node of the tree
     // It exists since the tree is nonempty
-    return add_range_next_to(tree, prev, start, end, data);
+    return add_range(tree, start, end, data);
   }
   if ((last->start <= end) && (last->data == data)) {
     // Extend
@@ -875,8 +871,7 @@ int rb_set_64(rbtree_t *tree, uintptr_t start, uintptr_t end, uint64_t data) {
     last->start = end;
   }
   // Probably 'last->left ? prev : last' is enough
-  return add_range_next_to(tree, last->left ? pred_node(last) : last, start,
-                           end, data);
+  return add_range(tree, start, end, data);
 }
 
 int rb_set(rbtree_t *tree, uintptr_t start, uintptr_t end, uint32_t data) {
@@ -926,8 +921,7 @@ int rb_unset(rbtree_t *tree, uintptr_t start, uintptr_t end) {
   } else if (prev && (prev->end > start)) {
     if (prev->end > end) {
       // Split prev
-      int ret = add_range_next_to(tree, rb_node_get_right(prev) ? next : prev,
-                                  end, prev->end, prev->data);
+      int ret = add_range(tree, end, prev->end, prev->data);
       prev->end = start;
       return ret;
     } else if (prev->end == end) {
@@ -938,7 +932,7 @@ int rb_unset(rbtree_t *tree, uintptr_t start, uintptr_t end) {
   while (next && (next->start < end) && (next->end <= end)) {
     // Remove the entire node
     node = next;
-    next = succ_node(next);
+    next = succ_node(tree, next);
     remove_node(tree, node);
   }
   if (next && (next->start < end)) {
@@ -979,7 +973,7 @@ uintptr_t rb_get_lefter(rbtree_t *tree) {
 #include <stdio.h>
 static void print_rbnode(const rbnode *node, unsigned depth, uintptr_t minstart,
                          uintptr_t maxend, unsigned *bdepth) {
-  if (!node) {
+  /*if (!node) {
     if (!*bdepth || *bdepth == depth + 1) {
       *bdepth = depth + 1;
       printf("[%u]", depth);
@@ -1035,6 +1029,8 @@ static void print_rbnode(const rbnode *node, unsigned depth, uintptr_t minstart,
                  bdepth);
   }
   printf(")");
+  */
+ printf(", (%c/%p) %lx-%lx: %llu, ", rb_node_get_color(node) == RB_BLACK ? 'B' : 'R', node, node->start, node->end, node->data);
 }
 
 static void rbtree_print(const rbtree_t *tree) {
@@ -1058,7 +1054,7 @@ static void rbtree_print(const rbtree_t *tree) {
 #ifdef RBTREE_TEST
 int main() {
   rbtree_t *tree = rbtree_init("test");
-  rbtree_print(tree);
+  // rbtree_print(tree);
   fflush(stdout);
   /*int ret;
   ret = rb_set(tree, 0x43, 0x44, 0x01);
@@ -1091,29 +1087,49 @@ int main() {
 
   // tree->root = node27; rbtree_print(tree); fflush(stdout);
   // rb_set(tree, 2, 3, 1); rbtree_print(tree); fflush(stdout);
-  // add_range_next_to(tree, node24, 0x0E7000, 0x0E8000, 69);
+  // add_range(tree, node24, 0x0E7000, 0x0E8000, 69);
   // rbtree_print(tree); fflush(stdout); rbtree_print(tree); fflush(stdout);
   // uint32_t val = rb_get(tree, 0x11003000);
   // printf("0x11003000 has attribute %hhu\n", val); fflush(stdout);
   // remove_node(tree, node0); rbtree_print(tree); fflush(stdout);
-  // add_range_next_to(tree, node1, 0x0E7000, 0x0E8000, 69); rbtree_print(tree);
+  // add_range(tree, node1, 0x0E7000, 0x0E8000, 69); rbtree_print(tree);
   // fflush(stdout);
-  rb_set(tree, 0x130000, 0x140000, 7);
-  rbtree_print(tree);
+  rb_set(tree, 0x130000, 0x140000, 1);
+  //rbtree_print(tree);
   fflush(stdout);
-  rb_set(tree, 0x141000, 0x142000, 135);
-  rbtree_print(tree);
+  rb_set(tree, 0x150000, 0x160000, 2);
+  rb_set(tree, 0x180000, 0x200000, 3);
+  //check
+  uint32_t val = rb_get(tree, 0x131994);
+  printf("0x131994 has attribute %hhu\n", val);
+  val = rb_get(tree, 0x151994);
+  printf("0x151994 has attribute %hhu\n", val);
+  val = rb_get(tree, 0x181994);
+  printf("0x181994 has attribute %hhu\n", val);
+  rb_set(tree, 0x130000, 0x200000, 135);
+  printf("case 2-1\n");
+  val = rb_get(tree, 0x131994);
+  printf("0x131994 has attribute %hhu\n", val);
+  val = rb_get(tree, 0x151994);
+  printf("0x151994 has attribute %hhu\n", val);
+  val = rb_get(tree, 0x181994);
+  printf("0x181994 has attribute %hhu\n", val);
+  //rbtree_print(tree);
   fflush(stdout);
-  rb_set(tree, 0x140000, 0x141000, 135);
-  rbtree_print(tree);
+  rb_unset(tree, 0x140000, 0x141000);
+  val = rb_get(tree, 0x131994);
+  printf("0x131994 has attribute %hhu\n", val);
+  val = rb_get(tree, 0x140199);
+  printf("0x140994 has attribute %hhu\n", val);
+  //rbtree_print(tree);
   fflush(stdout);
   rb_set(tree, 0x140000, 0x147000, 7);
-  rbtree_print(tree);
+  //rbtree_print(tree);
   fflush(stdout);
   rb_set(tree, 0x140000, 0x141000, 135);
-  rbtree_print(tree);
+  //rbtree_print(tree);
   fflush(stdout);
-  uint32_t val = rb_get(tree, 0x141994);
+  val = rb_get(tree, 0x141994);
   printf("0x141994 has attribute %hhu\n", val);
   fflush(stdout);
   rbtree_delete(tree);
