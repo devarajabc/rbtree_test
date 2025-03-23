@@ -751,8 +751,8 @@ static rbnode *find_addr(rbtree_t *tree, uintptr_t addr) {
     rbnode *node = tree->root;
     while (node) {
         if ((node->start <= addr) && (node->end > addr)) return node;
-        if (addr < node->start) node = node->left;
-        else node = node->right;
+        if (addr < node->start) node = rb_node_get_left(node);
+        else node = rb_node_get_right(node);
     }
     return NULL;
 }
