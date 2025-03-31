@@ -633,37 +633,19 @@ static rbnode *succ_node(rbtree_t *rb, rbnode *node) {
     while (rb_node_get_left(node))
       node = rb_node_get_left(node);
     return node;
-  }
-  // right sub-tree didn't exit
-  rb_path_entry_t path[RB_MAX_DEPTH];
-  rb_path_entry_t *pathp;
-  
-  /* Traverse through red-black tree node and find the lowest ancestor of node
-  */
-  path->node = rb->root;
-  for (pathp = path; pathp->node; pathp++) {
-    cmp_t cmp = pathp->cmp = comparator(node->start, pathp->node->start);//pathp->node => current node
-    switch (cmp) {
-    case _CMP_LESS:
-      pathp[1].node = rb_node_get_left(pathp->node);
-      break;
-    case _CMP_GREATER:
-      pathp[1].node = rb_node_get_right(pathp->node);
-      break;
-    default:
-     // __UNREACHABLE;
-      break;
+  } else {
+    rbnode *tmp = rb->root, *last = NULL;
+    uintptr_t start = node->start;
+    while (tmp) {
+      if (tmp->start < start) {
+        tmp = rb_node_get_right(tmp);
+      } else if (tmp->start > start){
+        last = tmp;
+        tmp = rb_node_get_left(tmp);
+      }else
+        break;
     }
-  }
-  //pathp->node == NULL
-  pathp->node = node;
-  assert(!rb_node_get_right(node));
-
-  /* Go from target node back to root node and fix color accordingly */
-  for (--pathp; (uintptr_t)pathp >= (uintptr_t)path; pathp--) {
-    if (pathp->cmp == _CMP_GREATER) {
-      return pathp->node;
-    }
+    return last;
   }
 }
 
